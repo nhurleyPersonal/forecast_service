@@ -4,6 +4,8 @@ import surfpy
 import math
 from pymongo import MongoClient
 from datetime import datetime
+import time
+
 
 
 def calculate_angle(lat1, lon1, lat2, lon2):
@@ -57,6 +59,11 @@ if __name__ == '__main__':
     # Create a dictionary where each key is a spot name and each value is the corresponding document
     spots_dict = {spot['name']: spot for spot in all_spots}
 
+    west_model = surfpy.wavemodel.us_west_coast_gfs_wave_model()
+    west_gfs = west_model.fetch_grib_datas(0, 192)
+    east_model = surfpy.wavemodel.atlantic_gfs_wave_model()
+    east_gfs = east_model.fetch_grib_datas(0, 192)
+
     for key in spots_dict.keys():
         spot = spots_dict[key]
         spotId = spot['_id']
@@ -70,6 +77,8 @@ if __name__ == '__main__':
         slope = float(spot['slope'])
         model = spot['model']
 
+        print("Processing spot: ", name)
+
         # Create Location objects
         buoy_location = surfpy.Location(buoy_x, buoy_y, altitude=depth, name='Buoy Location')
         buoy_location.depth = depth
@@ -80,21 +89,32 @@ if __name__ == '__main__':
 
         # Fetch and parse wave data
         wave_model = None
+        raw_wave_data = None
         if model == 'west':
-            wave_model = surfpy.wavemodel.us_west_coast_gfs_wave_model()
-        elif model == 'east':
-            wave_model = surfpy.wavemodel.atlantic_gfs_wave_model()
-        
+            wave_model = west_model
+            raw_wave_data = wave_model.parse_grib_datas(buoy_location, west_gfs)
 
-        wave_grib_data = wave_model.fetch_grib_datas(0, 48)
-        raw_wave_data = wave_model.parse_grib_datas(buoy_location, wave_grib_data)
+        elif model == 'east':
+            wave_model = east_model
+            raw_wave_data = wave_model.parse_grib_datas(buoy_location, east_gfs)
 
         # Convert to buoy data
         data = wave_model.to_buoy_data(raw_wave_data)
 
-        # Fetch weather data and merge
-        weather_data = surfpy.WeatherApi.fetch_hourly_forecast(beach_location)
-        surfpy.merge_wave_weather_data(data, weather_data)
+        max_retries = 3
+        for i in range(max_retries):
+            try:
+                # Fetch weather data and merge
+                weather_data = surfpy.WeatherApi.fetch_hourly_forecast(beach_location)
+                surfpy.merge_wave_weather_data(data, weather_data)
+
+                break
+            except Exception as e:
+                print(f"Attempt {i+1} failed with error: {e}")
+                if i < max_retries - 1:  # No delay on the last attempt
+                    time.sleep(5)  # Wait for 5 seconds before the next retry
+                else:
+                    raise  # Re-raise the last exception if all attempts failed
 
         # Process data
         for dat in data:
