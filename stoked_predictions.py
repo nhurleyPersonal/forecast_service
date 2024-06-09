@@ -140,7 +140,7 @@ if __name__ == '__main__':
                 'spotId': spotId,
                 'name': name,
                 'date': dat['date'],
-                'sessionDatetime': datetime.fromtimestamp(dat['date']),  # convert epoch to datetime
+                'lastUpdated': datetime.now(), 
                 'windSpeed': dat['wind_speed'],
                 'windDirection': dat['wind_direction'],
                 'windCompassDirection': dat['wind_compass_direction'],
